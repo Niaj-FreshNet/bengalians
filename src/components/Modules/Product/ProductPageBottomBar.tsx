@@ -1,0 +1,302 @@
+"use client";
+
+import { useCart } from "@/context/CartContext";
+import { Badge, Heart, MessageSquare, ShoppingCart, Tag, Zap } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useProductSelectionOptional } from "@/context/ProductSelectionContext";
+import { useAppDispatch, useAppSelector } from "@/redux/store/hooks";
+// import { toggleWishlist, selectIsInWishlist } from "@/redux/store/features/wishlist/wishlistSlice";
+import { IDiscount, IProduct, IProductVariant } from "@/types/product.types";
+import { useRouter } from "next/navigation";
+
+export default function ProductPageBottomBar({ product }: { product: IProduct }) {
+    const cart = useCart()
+    const router = useRouter()
+    // const sizeKeys = product.variantPrices
+    //     ? Object.keys(product.variantPrices)
+    //     : product.measurement === "ml"
+    //         ? ["3 ml", "6 ml", "12 ml", "25 ml"]
+    //         : ["3 gm", "6 gm", "12 gm"]
+    const sizeKeys = product.variants?.length
+        ? product.variants.map(v => `${v.size} ${v.unit.toLowerCase()}`)
+        : ["3 ml", "6 ml", "12 ml", "25 ml"]
+
+    const selection = useProductSelectionOptional();
+    const [fallbackSelectedSize, setFallbackSelectedSize] = useState<string>(sizeKeys[0] || "3 ml");
+    const [fallbackQuantity, setFallbackQuantity] = useState<number>(1);
+    const dispatch = useAppDispatch();
+
+    // const selectedSize = selection?.selectedSize ?? fallbackSelectedSize;
+    // const setSelectedSize = selection?.setSelectedSize ?? setFallbackSelectedSize;
+    const quantity = selection?.quantity ?? fallbackQuantity;
+    const setQuantity = selection?.setQuantity ?? setFallbackQuantity;
+    // const isWishlisted = useAppSelector(useMemo(() => selectIsInWishlist(product._id), [product._id]));
+    // const onToggleWishlist = () => dispatch(toggleWishlist(product));
+
+    const selectedSize = selection?.selectedVariant
+        ? `${selection.selectedVariant.size} ${selection.selectedVariant.unit.toLowerCase()}`
+        : fallbackSelectedSize;
+
+    //   const price = selection?.selectedVariant
+    //     ? `${selection.selectedVariant.price}`
+    //     : 0;
+
+    //   const selectedPrice = Number(price)
+
+    const setSelectedSize = (size: string) => {
+        if (!selection) return setFallbackSelectedSize(size);
+
+        const variant = product.variants?.find(
+            (v) => `${v.size} ${v.unit.toLowerCase()}` === size
+        );
+        if (variant) selection.setSelectedVariant(variant);
+    };
+
+    // Available sizes based on product data
+    const availableSizes = sizeKeys;
+
+    // Get current price
+    const getCurrentVariant = () => {
+        return product.variants?.find(
+            v => `${v.size} ${v.unit.toLowerCase()}` === selectedSize
+        );
+    };
+
+    const currentVariant = getCurrentVariant();
+    const currentPrice = currentVariant?.price ?? product.minPrice ?? 0;
+
+    // Get active discount (checks dates, variant first)
+    const getActiveDiscount = (
+        product: Partial<IProduct>,
+        variant?: IProductVariant
+    ): IDiscount | null => {
+        const now = new Date();
+        const discounts = variant?.discounts?.length
+            ? variant.discounts
+            : product.discounts;
+
+        if (!discounts || discounts.length === 0) return null;
+
+        return discounts.find(d => {
+            const startOk = !d.startDate || new Date(d.startDate) <= now;
+            const endOk = !d.endDate || new Date(d.endDate) >= now;
+            return startOk && endOk;
+        }) || null;
+    };
+
+    const discount = getActiveDiscount(product, currentVariant);
+
+    let discountedPrice = currentPrice;
+
+    if (discount) {
+        if (discount.type === "percentage") {
+            discountedPrice = currentPrice - (currentPrice * discount.value) / 100;
+        } else if (discount.type === "fixed") {
+            discountedPrice = currentPrice - discount.value;
+        }
+    }
+
+    // Final totals
+    const totalCurrent = currentPrice * quantity;
+    const totalDiscounted = discountedPrice * quantity;
+
+    const activeDiscount = getActiveDiscount(product, currentVariant);
+
+    const discountValue = activeDiscount?.type === "percentage"
+        ? activeDiscount.value
+        : 0;
+
+    // ✅ Determine selected variant price (before discount)
+    const price = selection?.selectedVariant?.price ?? product.minPrice ?? 0;
+
+    // ✅ Get final price after checking discount
+    const selectedPrice = discount ? discountedPrice : price;
+
+    const handleQuantityChange = (type: "increment" | "decrement") => {
+        const next = type === "increment"
+            ? Math.min(quantity + 1, 10)
+            : Math.max(quantity - 1, 1);
+        setQuantity(next);
+    };
+
+
+
+    // const totalVariantStock = product.variants?.reduce(
+    //   (sum, v) => sum + (v.stock ?? 0),
+    //   0
+    // );
+
+    // const isOutOfStock = (product.totalStock ?? 0) <= 0 || (totalVariantStock ?? 0) <= 0;
+    const isOutOfStock = (product.totalStock ?? 0) <= 0;
+
+    const handleAddToCart = async () => {
+        if (isOutOfStock) return;
+        cart?.addToCart?.(product as any, quantity, selectedSize, selectedPrice);
+    };
+
+    return (
+        <>
+            {/* Universal Sticky CTA */}
+            <div id="sticky-cart" className="fixed bottom-0 left-0 right-0 z-50 transform transition-transform duration-300 ease-in-out">
+                {/* Gradient Background */}
+                <div className="absolute inset-0 bg-gradient-to-t from-white via-white/95 to-transparent backdrop-blur-xl"></div>
+
+                {/* Shadow */}
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
+
+                <div className="relative px-4 py-2 safe-area-bottom">
+                    {/* Desktop/Tablet Layout */}
+                    <div className="hidden md:block">
+                        <div className="max-w-7xl mx-auto flex items-center justify-between">
+                            <div className="flex items-center gap-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-16 h-16 bg-gray-100 rounded-xl overflow-hidden border-2 border-gray-200">
+                                        <img
+                                            src={product.primaryImage}
+                                            alt={product.name}
+                                            className="w-full h-full object-cover"
+                                        />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-gray-900 text-lg">{product.name}</h3>
+                                        <div className="text-2xl font-bold text-gray-900">
+                                            ৳{discountedPrice.toLocaleString()}
+                                            {(product.discount && discountedPrice !== currentPrice) && (
+                                                <span className="text-lg text-gray-500 line-through ml-2">
+                                                    ৳{currentPrice.toLocaleString()}
+                                                </span>
+                                            )}
+                                            {(totalDiscounted !== totalCurrent) && (
+                                                <span className="text-sm text-gray-500 line-through ml-2">
+                                                    ৳{totalCurrent.toLocaleString()}
+                                                </span>
+                                            )}
+                                            {/* {activeDiscount ? (
+                                                <Badge className="bg-gradient-to-r from-red-500 to-pink-500 text-white px-4 py-2 animate-pulse shadow-lg">
+                                                    <Tag className="w-3 h-3 mr-2" />
+                                                    {activeDiscount.type === "percentage"
+                                                        ? `${activeDiscount.value}% OFF`
+                                                        : `৳${activeDiscount.value} OFF`}
+                                                </Badge>
+                                            ) : null} */}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                {/* <button
+                                    onClick={onToggleWishlist}
+                                    className="flex items-center gap-2 bg-white border-2 border-gray-300 text-gray-700 py-3 px-6 rounded-2xl font-semibold hover:border-red-300 hover:bg-red-50 hover:text-red-600 transition-all duration-300">
+                                    <Heart className={`w-5 h-5 mr-2 ${isWishlisted ? "fill-current" : ""}`} />
+                                    {isWishlisted ? "Saved" : "Wishlist"}
+                                </button> */}
+
+                                {/* <a
+                                    href="https://wa.me/8801566395807"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 bg-white border-2 border-gray-300 text-gray-700 py-3 px-6 rounded-2xl font-semibold hover:border-green-300 hover:bg-green-50 hover:text-green-600 transition-all duration-300"
+                                >
+                                    <MessageSquare className="w-5 h-5" />
+                                    Ask Expert
+                                </a> */}
+
+                                <button
+                                    disabled={isOutOfStock}
+                                    className="flex items-center gap-3 bg-gradient-to-r from-blue-600 via-purple-600 to-blue-700 text-white py-4 px-8 rounded-2xl font-bold shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-[1.02]"
+                                    onClick={() => {
+                                        if (!isOutOfStock) {
+                                            cart?.addToCart?.(product as any, quantity, selectedSize, selectedPrice)
+                                        }
+                                    }}
+                                >
+                                    <ShoppingCart className="w-6 h-6 mr-2" />
+                                    {isOutOfStock ? "Out of Stock" : "Add to Cart"}
+                                </button>
+
+                                <button
+                                    disabled={isOutOfStock}
+                                    onClick={() => {
+                                        if (!isOutOfStock) {
+                                            // cart?.setCheckoutOnlyItem?.(product as any, quantity, selectedSize, selectedPrice)
+                                            cart?.addToCart?.(product as any, quantity, selectedSize, selectedPrice);
+                                            router.push('/checkout')
+                                        }
+                                    }}
+                                    className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white py-4 px-8 rounded-2xl font-bold shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-[1.02] flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                    <Zap className="w-5 h-5" />
+                                    Buy Now
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Mobile Layout */}
+                    <div className="md:hidden">
+                        <div className="flex items-center gap-3 mb-4">
+                            <button
+                                disabled={isOutOfStock}
+                                onClick={handleAddToCart}
+                                className="flex-1 bg-gradient-to-r from-blue-600 via-purple-600 to-blue-700 text-white py-4 px-4 rounded-2xl font-bold text-center shadow-xl hover:shadow-2xl transition-all duration-300 touch-manipulation active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                                <ShoppingCart className="w-5 h-5" />
+                                {isOutOfStock ? "Out of Stock" : "Add to Cart"}
+                            </button>
+
+                            {/* <button
+                                onClick={onToggleWishlist}
+                                className="w-14 h-14 bg-gradient-to-br from-red-50 to-pink-50 border-2 border-red-200 text-red-600 rounded-2xl flex items-center justify-center hover:bg-red-100 transition-all duration-300 touch-manipulation active:scale-95 shadow-lg"
+                            >
+                                <Heart className={`w-5 h-5 ${isWishlisted ? 'fill-current' : ''}`} />
+                            </button> */}
+
+                            {/* <a
+                                href="https://wa.me/8801566395807"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-14 h-14 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 text-green-600 rounded-2xl flex items-center justify-center hover:bg-green-100 transition-all duration-300 touch-manipulation active:scale-95 shadow-lg"
+                            >
+                                <MessageSquare className="w-5 h-5" />
+                            </a> */}
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                                <div className="text-xs text-gray-500 font-medium">Total Price</div>
+                                <div className="text-xl font-bold text-gray-900">
+                                    ৳{totalDiscounted.toLocaleString()}
+                                    {/* {(product.discount && totalDiscounted !== totalCurrent) && ( */}
+                                    {(totalDiscounted !== totalCurrent) && (
+                                        <span className="text-sm text-gray-500 line-through ml-2">
+                                            ৳{totalCurrent.toLocaleString()}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <button
+                                disabled={isOutOfStock}
+                                onClick={() => {
+                                    if (!isOutOfStock) {
+                                        // cart?.setCheckoutOnlyItem?.(product as any, quantity, selectedSize, selectedPrice)
+                                        cart?.addToCart?.(product as any, quantity, selectedSize, selectedPrice);
+                                        router.push('/checkout')
+                                    }
+                                }}
+                                className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white py-3 px-8 rounded-2xl font-bold shadow-xl hover:shadow-2xl transition-all duration-300 touch-manipulation active:scale-95 flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                                <Zap className="w-5 h-5" />
+                                Buy Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Spacer for sticky CTA */}
+            < div className="h-24 md:h-28" ></div >
+        </>
+    )
+}
